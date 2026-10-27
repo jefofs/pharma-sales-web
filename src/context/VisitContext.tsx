@@ -1,4 +1,5 @@
 'use client';
+
 import React, {
   createContext,
   useState,
@@ -9,12 +10,12 @@ import React, {
   useRef,
 } from 'react';
 
-import { Doctor } from '../types/doctor';
+import { Doctor } from '@/types/doctor';
 
 import VisitService, {
   CreateVisitRequest,
   VisitResponse,
-} from '../services/VisitService';
+} from '@/services/VisitService';
 
 import {
   CachedVisit,
@@ -23,15 +24,12 @@ import {
   replaceLocalIdWithServerId,
   setCachedVisits,
   upsertCachedVisit,
-} from '../services/storage/visitStorage';
-
-import {
   enqueue,
   getQueue,
   makeLocalId,
   removeFromQueue,
   QueueItem,
-} from '../services/storage/syncQueue';
+} from '@/services/serviceStorage';
 
 import { useOfflineSync } from './NetworkContext';
 
@@ -105,9 +103,13 @@ export function VisitProvider({ children }: { children: ReactNode }) {
   const loadVisits = useCallback(async () => {
     if (loadingRef.current) return;
     loadingRef.current = true;
-    setLoading(true);
+
     try {
+      // O await aqui garante que as chamadas de setState abaixo rodem de forma assíncrona,
+      // eliminando o aviso de cascading renders no useEffect
       const cached = await getCachedVisits();
+      setLoading(true);
+
       if (cached.length > 0) setVisits(cached);
 
       if (!isConnected) {
@@ -139,7 +141,19 @@ export function VisitProvider({ children }: { children: ReactNode }) {
   }, [isConnected, refreshPendingCount]);
 
   useEffect(() => {
-    loadVisits();
+    let isMounted = true;
+
+    const init = async () => {
+      if (isMounted) {
+        await loadVisits();
+      }
+    };
+
+    init();
+
+    return () => {
+      isMounted = false;
+    };
   }, [loadVisits]);
 
   const addVisit = useCallback(

@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
   useCallback,
+  useSyncExternalStore,
   ReactNode,
 } from 'react';
 
@@ -21,8 +22,32 @@ interface NetworkContextData {
 
 const NetworkContext = createContext<NetworkContextData>({} as NetworkContextData);
 
+// Funções para assinar o evento 'online/offline' do navegador sem gerar re-renders desnecessários
+function subscribeNetwork(callback: () => void) {
+  window.addEventListener('online', callback);
+  window.addEventListener('offline', callback);
+  return () => {
+    window.removeEventListener('online', callback);
+    window.removeEventListener('offline', callback);
+  };
+}
+
+function getSnapshot() {
+  return navigator.onLine;
+}
+
+function getServerSnapshot() {
+  return true; // Padrão seguro para SSR no servidor
+}
+
 export function NetworkProvider({ children }: { children: ReactNode }) {
-  const [isConnected, setIsConnected] = useState<boolean>(true);
+  // Hook oficial do React para APIs externas do navegador
+  const isConnected = useSyncExternalStore(
+    subscribeNetwork,
+    getSnapshot,
+    getServerSnapshot
+  );
+
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const handlersRef = useRef<Set<SyncFn>>(new Set());
   const wasOfflineRef = useRef<boolean>(false);
@@ -50,35 +75,15 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Monitora a transição de offline -> online para disparar a sincronização
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    // Estado inicial da conexão do navegador
-    const connected = navigator.onLine;
-    setIsConnected(connected);
-    wasOfflineRef.current = !connected;
-
-    const handleOnline = () => {
-      setIsConnected(true);
-      if (wasOfflineRef.current) {
-        wasOfflineRef.current = false;
-        triggerSync();
-      }
-    };
-
-    const handleOffline = () => {
-      setIsConnected(false);
+    if (isConnected && wasOfflineRef.current) {
+      wasOfflineRef.current = false;
+      triggerSync();
+    } else if (!isConnected) {
       wasOfflineRef.current = true;
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, [triggerSync]);
+    }
+  }, [isConnected, triggerSync]);
 
   return (
     <NetworkContext.Provider
