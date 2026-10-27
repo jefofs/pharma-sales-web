@@ -1,213 +1,138 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useVisits } from '@/context/VisitContext';
-import { useNotifications } from '@/context/NotificationContext';
-import { useOfflineSync } from '@/context/NetworkContext';
 
-export default function Home() {
-  const { isConnected, isSyncing } = useOfflineSync();
-  const { unreadCount, markAllAsRead } = useNotifications();
-  const { visits, loading, pendingCount, addVisit, deleteVisit } = useVisits();
+export default function VisitsListPage() {
+  const { visits, loading, deleteVisit } = useVisits();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('TODOS');
 
-  // Estados para o formulário de cadastro
-  const [doctorId, setDoctorId] = useState('');
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
-  const [observations, setObservations] = useState('');
+  // Filtro inteligente por médico/observação e por status
+  const filteredVisits = visits.filter((v) => {
+    const matchSearch =
+      (v.doctorName?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      String(v.doctorId).includes(searchTerm) ||
+      (v.observations?.toLowerCase() || '').includes(searchTerm.toLowerCase());
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!doctorId || !date || !time) return;
+    const matchStatus = statusFilter === 'TODOS' || v.status === statusFilter;
 
-    await addVisit({
-      doctorId: Number(doctorId),
-      userId: 1,
-      date,
-      time,
-      observation: observations,
-      presentedMaterial: 'Amostras Grátis',
-      status: 'AGENDADA',
-    });
+    return matchSearch && matchStatus;
+  });
 
-    setDoctorId('');
-    setDate('');
-    setTime('');
-    setObservations('');
+  const handleDelete = async (id: number | string) => {
+    if (confirm('Tem certeza de que deseja excluir esta visita?')) {
+      await deleteVisit(id);
+    }
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900 p-4 md:p-8">
-      <div className="max-w-5xl mx-auto space-y-6">
-        
-        {/* Cabeçalho do Dashboard */}
-        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800">Pharma Sales Manager</h1>
-            <p className="text-sm text-slate-500">Gestão de Visitas Médicas & Representantes</p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Status Online/Offline */}
-            <span
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full ${
-                isConnected
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : 'bg-amber-100 text-amber-800'
-              }`}
-            >
-              <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-              {isConnected ? 'Online' : 'Modo Offline'}
-            </span>
-
-            {isSyncing && (
-              <span className="text-xs text-blue-600 font-medium animate-pulse">
-                Sincronizando...
-              </span>
-            )}
-
-            {/* Pendências de Sync */}
-            {pendingCount > 0 && (
-              <span className="bg-orange-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">
-                {pendingCount} pendente(s)
-              </span>
-            )}
-
-            {/* Notificações */}
-            <button
-              onClick={markAllAsRead}
-              className="relative bg-slate-100 hover:bg-slate-200 transition-colors p-2 rounded-full text-sm"
-              title="Marcar notificações como lidas"
-            >
-              🔔
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-          </div>
-        </header>
-
-        {/* Conteúdo Principal */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* Formulário de Agendamento */}
-          <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-fit">
-            <h2 className="text-lg font-bold text-slate-800 mb-4">Nova Visita</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  ID do Médico
-                </label>
-                <input
-                  type="number"
-                  value={doctorId}
-                  onChange={(e) => setDoctorId(e.target.value)}
-                  placeholder="Ex: 1"
-                  required
-                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Data
-                </label>
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  required
-                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Horário
-                </label>
-                <input
-                  type="time"
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
-                  required
-                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Observações
-                </label>
-                <textarea
-                  value={observations}
-                  onChange={(e) => setObservations(e.target.value)}
-                  placeholder="Detalhes sobre a visita..."
-                  rows={3}
-                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all resize-none"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors shadow-sm"
-              >
-                Agendar Visita
-              </button>
-            </form>
-          </section>
-
-          {/* Listagem de Visitas */}
-          <section className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-            <h2 className="text-lg font-bold text-slate-800 mb-4">Visitas Registradas</h2>
-
-            {loading ? (
-              <div className="py-8 text-center text-slate-500 text-sm">Carregando visitas...</div>
-            ) : visits.length === 0 ? (
-              <div className="py-8 text-center text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl">
-                Nenhuma visita cadastrada.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {visits.map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-4 border border-slate-200 rounded-xl flex items-center justify-between bg-slate-50 hover:bg-white transition-all shadow-2xs"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-slate-800">
-                          {item.doctorName || `Médico ID: ${item.doctorId}`}
-                        </span>
-                        {!item.sincronizado && (
-                          <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-md">
-                            Offline
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-500">
-                        📅 {item.date} às {item.time} | Status: <span className="font-medium text-slate-700">{item.status}</span>
-                      </p>
-                      {item.observations && (
-                        <p className="text-xs text-slate-600 italic">{item.observations}</p>
-                      )}
-                    </div>
-
-                    <button
-                      onClick={() => deleteVisit(item.id)}
-                      className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 font-medium px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      Excluir
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
+    <main className="max-w-5xl mx-auto px-4 py-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Visitas Registradas</h1>
+          <p className="text-slate-500 text-sm">
+            Gerencie o histórico e status de visitas médicas.
+          </p>
         </div>
+        <Link
+          href="/visitas/nova"
+          className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition shadow-sm"
+        >
+          + Agendar Visita
+        </Link>
       </div>
+
+      {/* Busca e Filtros (RF03) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <input
+          type="text"
+          placeholder="Buscar por médico, ID ou observação..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="md:col-span-2 px-3.5 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+        />
+
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="px-3.5 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-slate-700"
+        >
+          <option value="TODOS">Todos os Status</option>
+          <option value="AGENDADA">AGENDADA</option>
+          <option value="CONCLUIDA">CONCLUIDA</option>
+          <option value="CANCELADA">CANCELADA</option>
+          <option value="REAGENDADA">REAGENDADA</option>
+        </select>
+      </div>
+
+      {/* Lista de Cards */}
+      {loading && visits.length === 0 ? (
+        <p className="text-slate-500 text-center py-12">Carregando visitas...</p>
+      ) : filteredVisits.length === 0 ? (
+        <div className="text-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+          <p className="text-slate-600 font-medium">Nenhuma visita encontrada.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredVisits.map((visit) => (
+            <div
+              key={visit.id}
+              className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <h2 className="font-bold text-slate-900 text-lg">
+                    {visit.doctorName || `Médico ID: ${visit.doctorId}`}
+                  </h2>
+                  <span
+                    className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${
+                      visit.status === 'CONCLUIDA'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : visit.status === 'CANCELADA'
+                        ? 'bg-rose-100 text-rose-800'
+                        : 'bg-blue-100 text-blue-800'
+                    }`}
+                  >
+                    {visit.status}
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-500 mb-2">
+                  📅 {visit.date} às {visit.time}
+                  {!visit.sincronizado && (
+                    <span className="ml-2 bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                      Offline
+                    </span>
+                  )}
+                </p>
+
+                {visit.observations && (
+                  <p className="text-sm text-slate-600 line-clamp-2 mb-4">
+                    {visit.observations}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                <Link
+                  href={`/visitas/${visit.id}`}
+                  className="text-sm font-medium text-blue-600 hover:text-blue-800"
+                >
+                  Ver / Editar
+                </Link>
+                <button
+                  onClick={() => handleDelete(visit.id)}
+                  className="text-sm font-medium text-rose-600 hover:text-rose-800"
+                >
+                  Excluir
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </main>
   );
 }
