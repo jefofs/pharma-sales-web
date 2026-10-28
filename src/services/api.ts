@@ -1,6 +1,5 @@
 import axios from 'axios';
 
-// Define a URL do backend Java (permite uso de variável de ambiente ou fallback local)
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
 const api = axios.create({
@@ -10,7 +9,6 @@ const api = axios.create({
   },
 });
 
-// Interceptor opcional para anexar o token de autenticação (se houver)
 api.interceptors.request.use(
   (config) => {
     if (typeof window !== 'undefined') {

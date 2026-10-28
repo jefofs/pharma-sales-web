@@ -9,7 +9,6 @@ export default function VisitsListPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('TODOS');
 
-  // Filtro inteligente por médico/observação e por status
   const filteredVisits = visits.filter((v) => {
     const matchSearch =
       (v.doctorName?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||

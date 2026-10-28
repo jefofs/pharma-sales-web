@@ -8,7 +8,7 @@ import React, {
   useEffect,
   useCallback,
   useRef,
-} from 'react';
+} from 'react'; 
 
 import { Doctor } from '@/types/doctor';
 
@@ -105,8 +105,6 @@ export function VisitProvider({ children }: { children: ReactNode }) {
     loadingRef.current = true;
 
     try {
-      // O await aqui garante que as chamadas de setState abaixo rodem de forma assíncrona,
-      // eliminando o aviso de cascading renders no useEffect
       const cached = await getCachedVisits();
       setLoading(true);
 

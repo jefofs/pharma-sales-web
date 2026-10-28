@@ -1,10 +1,12 @@
 'use client';
 
+import './globals.css';
 import Link from 'next/link';
-import { useOfflineSync } from '@/context/NetworkContext';
-import { useVisits } from '@/context/VisitContext';
+import { NetworkProvider, useOfflineSync } from '@/context/NetworkContext';
+import { VisitProvider, useVisits } from '@/context/VisitContext';
+import { NotificationProvider } from '@/context/NotificationContext';
 
-export function NavigationHeader() {
+function NavigationHeader() {
   const { isConnected } = useOfflineSync();
   const { pendingCount } = useVisits();
 
@@ -32,23 +34,29 @@ export function NavigationHeader() {
               </span>
             )}
           </div>
-
-          <nav className="flex gap-2">
-            <Link
-              href="/"
-              className="px-3 py-1.5 text-sm font-medium text-slate-700 hover:text-blue-600 transition"
-            >
-              Visitas
-            </Link>
-            <Link
-              href="/visitas/nova"
-              className="px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-            >
-              + Nova Visita
-            </Link>
-          </nav>
         </div>
       </div>
     </header>
+  );
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="pt-BR">
+      <body className="bg-slate-50 min-h-screen text-slate-900 antialiased">
+        <NetworkProvider>
+          <VisitProvider>
+            <NotificationProvider>
+              <NavigationHeader />
+              {children}
+            </NotificationProvider>
+          </VisitProvider>
+        </NetworkProvider>
+      </body>
+    </html>
   );
 }

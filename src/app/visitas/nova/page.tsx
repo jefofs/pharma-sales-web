@@ -23,7 +23,7 @@ export default function NewVisitPage() {
     try {
       await addVisit({
         doctorId: Number(doctorId),
-        userId: 1, // ID padrão do usuário representante
+        userId: 1,
         date,
         time,
         observation: observations,
