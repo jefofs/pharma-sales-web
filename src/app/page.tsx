@@ -36,7 +36,7 @@ export default function VisitsListPage() {
           </p>
         </div>
         <Link
-          href="/visitas/nova"
+          href="/visitas/add"
           className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition shadow-sm"
         >
           + Agendar Visita
@@ -75,9 +75,9 @@ export default function VisitsListPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredVisits.map((visit) => (
+          {filteredVisits.map((visit, index) => (
             <div
-              key={visit.id}
+              key={`visit-${visit.id ?? 'temp'}-${index}`}
               className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between"
             >
               <div>

@@ -1,5 +1,5 @@
 import { Visit } from '@/context/VisitContext';
-import { CreateVisitRequest } from './VisitService';
+import { CreateVisitRequest } from './visitService';
 
 export type CachedVisit = Visit;
 

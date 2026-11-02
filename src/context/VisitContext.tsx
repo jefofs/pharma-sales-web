@@ -8,14 +8,14 @@ import React, {
   useEffect,
   useCallback,
   useRef,
-} from 'react'; 
+} from 'react';
 
 import { Doctor } from '@/types/doctor';
 
 import VisitService, {
   CreateVisitRequest,
   VisitResponse,
-} from '@/services/VisitService';
+} from '@/services/visitService';
 
 import {
   CachedVisit,
@@ -65,6 +65,7 @@ function dedupeVisits<T extends { id: number | string }>(list: T[]): T[] {
   const seen = new Set<string>();
   const result: T[] = [];
   for (const v of list) {
+    if (!v || v.id === undefined || v.id === null) continue;
     const key = String(v.id);
     if (seen.has(key)) continue;
     seen.add(key);
@@ -190,56 +191,64 @@ export function VisitProvider({ children }: { children: ReactNode }) {
   );
 
   const updateVisit = useCallback(
-    async (id: number | string, visitData: CreateVisitRequest) => {
-      const isLocal = typeof id === 'string';
+    async (id: number | string, data: CreateVisitRequest) => {
+      const isLocal = typeof id === 'string' || isNaN(Number(id));
 
-      if (isConnected && !isLocal) {
-        try {
-          const updated = await VisitService.updateVisit(id as number, visitData);
-          const formatted = mapVisitResponseToVisit(updated);
-          await upsertCachedVisit(formatted);
-          setVisits((prev) => prev.map((v) => (v.id === id ? formatted : v)));
-          return;
-        } catch (err) {
-          console.warn('Falha ao atualizar visita, enfileirando offline:', err);
-        }
+      if (isLocal) {
+        const updatedLocal: Visit = {
+          id,
+          doctorId: data.doctorId,
+          userId: data.userId,
+          date: data.date,
+          time: data.time,
+          observations: data.observation,
+          presentedMaterial: data.presentedMaterial,
+          status: data.status,
+          sincronizado: false,
+        };
+
+        setVisits((prev) =>
+          prev.map((v) => (String(v.id) === String(id) ? updatedLocal : v))
+        );
+        await upsertCachedVisit(updatedLocal as CachedVisit);
+        return;
       }
 
-      const localId = isLocal ? (id as string) : makeLocalId();
-      const patched: CachedVisit = {
-        id,
-        doctorId: visitData.doctorId,
-        userId: visitData.userId,
-        date: visitData.date,
-        time: visitData.time,
-        observations: visitData.observation,
-        presentedMaterial: visitData.presentedMaterial,
-        status: visitData.status,
-        sincronizado: false,
-        localId,
-      };
-      await upsertCachedVisit(patched);
-      await enqueue({
-        localId,
-        operation: 'UPDATE',
-        serverId: isLocal ? undefined : (id as number),
-        payload: visitData,
-      });
-      setVisits((prev) => prev.map((v) => (v.id === id ? patched : v)));
-      await refreshPendingCount();
+      try {
+        const updated = await VisitService.updateVisit(Number(id), data);
+        const formatted = mapVisitResponseToVisit(updated);
+        await upsertCachedVisit(formatted);
+        setVisits((prev) =>
+          prev.map((v) => (String(v.id) === String(id) ? formatted : v))
+        );
+      } catch (error) {
+        console.warn('Backend indisponível. Atualização mantida localmente:', error);
+        setVisits((prev) =>
+          prev.map((v) =>
+            String(v.id) === String(id)
+              ? {
+                  ...v,
+                  ...data,
+                  observations: data.observation,
+                  sincronizado: false,
+                }
+              : v
+          )
+        );
+      }
     },
-    [isConnected, refreshPendingCount]
+    []
   );
 
   const deleteVisit = useCallback(
     async (id: number | string) => {
-      const isLocal = typeof id === 'string';
+      const isLocal = typeof id === 'string' || isNaN(Number(id));
 
       if (isConnected && !isLocal) {
         try {
-          await VisitService.deleteVisit(id as number);
+          await VisitService.deleteVisit(Number(id));
           await removeCachedVisit(id);
-          setVisits((prev) => prev.filter((v) => v.id !== id));
+          setVisits((prev) => prev.filter((v) => String(v.id) !== String(id)));
           return;
         } catch (err) {
           console.warn('Falha ao deletar visita, enfileirando offline:', err);
@@ -249,15 +258,15 @@ export function VisitProvider({ children }: { children: ReactNode }) {
       if (isLocal) {
         await removeCachedVisit(id);
         await removeFromQueue(id as string);
-        setVisits((prev) => prev.filter((v) => v.id !== id));
+        setVisits((prev) => prev.filter((v) => String(v.id) !== String(id)));
       } else {
         await removeCachedVisit(id);
         await enqueue({
           localId: makeLocalId(),
           operation: 'DELETE',
-          serverId: id as number,
+          serverId: Number(id),
         });
-        setVisits((prev) => prev.filter((v) => v.id !== id));
+        setVisits((prev) => prev.filter((v) => String(v.id) !== String(id)));
       }
       await refreshPendingCount();
     },

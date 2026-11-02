@@ -75,3 +75,11 @@ O backend estará rodando em http://localhost:8080
     npm run dev
 ``` 
 Abra o navegador e acesse: http://localhost:3000
+
+
+Screenshots do projeto:
+![estrutura de pastas do projeto](images/estrutura-do-projeto.png)
+![tela inicial](images/tela-inicial.png)
+![tela de agendamento de visita](images/adicionar-visita.png)
+![alert de confirmação para excluir visita](images/alert-confirmacao-excluir-visita.png)
+![tela de detalhes e edição de visita](images/detalhes-edicao-visita.png)
