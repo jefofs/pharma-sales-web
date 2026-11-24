@@ -9,6 +9,7 @@ import React, {
   useCallback,
   useRef,
 } from 'react';
+import axios from 'axios';
 
 import { Doctor } from '@/types/doctor';
 
@@ -61,6 +62,13 @@ interface VisitContextData {
 
 const VisitContext = createContext<VisitContextData>({} as VisitContextData);
 
+function isNetworkFailure(error: unknown): boolean {
+  if (axios.isAxiosError(error)) {
+    return !error.response; // Sem resposta do servidor = API offline ou sem rede
+  }
+  return true;
+}
+
 function dedupeVisits<T extends { id: number | string }>(list: T[]): T[] {
   const seen = new Set<string>();
   const result: T[] = [];
@@ -90,7 +98,7 @@ function mapVisitResponseToVisit(visit: VisitResponse): CachedVisit {
 }
 
 export function VisitProvider({ children }: { children: ReactNode }) {
-  const { isConnected, registerSyncHandler } = useOfflineSync();
+  const { registerSyncHandler, reportApiStatus } = useOfflineSync();
   const [visits, setVisits] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
@@ -111,12 +119,14 @@ export function VisitProvider({ children }: { children: ReactNode }) {
 
       if (cached.length > 0) setVisits(cached);
 
-      if (!isConnected) {
+      if (!navigator.onLine) {
         await refreshPendingCount();
         return;
       }
 
       const response = await VisitService.getAllVisits();
+      reportApiStatus(true);
+
       const formatted = response.map(mapVisitResponseToVisit);
 
       const queue = await getQueue();
@@ -130,6 +140,9 @@ export function VisitProvider({ children }: { children: ReactNode }) {
       setVisits(merged);
     } catch (error) {
       console.error('Erro ao carregar visitas:', error);
+      if (isNetworkFailure(error)) {
+        reportApiStatus(false);
+      }
       const cached = await getCachedVisits();
       setVisits(cached);
     } finally {
@@ -137,7 +150,7 @@ export function VisitProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       loadingRef.current = false;
     }
-  }, [isConnected, refreshPendingCount]);
+  }, [refreshPendingCount, reportApiStatus]);
 
   useEffect(() => {
     let isMounted = true;
@@ -157,14 +170,21 @@ export function VisitProvider({ children }: { children: ReactNode }) {
 
   const addVisit = useCallback(
     async (visitData: CreateVisitRequest) => {
-      if (isConnected) {
+      if (navigator.onLine) {
         try {
           const created = await VisitService.createVisit(visitData);
+          reportApiStatus(true);
           const formatted = mapVisitResponseToVisit(created);
           await upsertCachedVisit(formatted);
           setVisits((prev) => dedupeVisits([formatted, ...prev]));
           return;
         } catch (err) {
+          if (!isNetworkFailure(err)) {
+            // Erro de validação da API (ex: 400): repassa para o formulário exibir
+            reportApiStatus(true);
+            throw err;
+          }
+          reportApiStatus(false);
           console.warn('Falha na API ao criar visita, enfileirando offline:', err);
         }
       }
@@ -187,7 +207,7 @@ export function VisitProvider({ children }: { children: ReactNode }) {
       setVisits((prev) => dedupeVisits([optimistic, ...prev]));
       await refreshPendingCount();
     },
-    [isConnected, refreshPendingCount]
+    [refreshPendingCount, reportApiStatus]
   );
 
   const updateVisit = useCallback(
@@ -195,8 +215,9 @@ export function VisitProvider({ children }: { children: ReactNode }) {
       const isLocal = typeof id === 'string' || isNaN(Number(id));
 
       if (isLocal) {
-        const updatedLocal: Visit = {
+        const updatedLocal: CachedVisit = {
           id,
+          localId: String(id),
           doctorId: data.doctorId,
           userId: data.userId,
           date: data.date,
@@ -210,18 +231,22 @@ export function VisitProvider({ children }: { children: ReactNode }) {
         setVisits((prev) =>
           prev.map((v) => (String(v.id) === String(id) ? updatedLocal : v))
         );
-        await upsertCachedVisit(updatedLocal as CachedVisit);
+        await upsertCachedVisit(updatedLocal);
         return;
       }
 
       try {
         const updated = await VisitService.updateVisit(Number(id), data);
+        reportApiStatus(true);
         const formatted = mapVisitResponseToVisit(updated);
         await upsertCachedVisit(formatted);
         setVisits((prev) =>
           prev.map((v) => (String(v.id) === String(id) ? formatted : v))
         );
       } catch (error) {
+        if (isNetworkFailure(error)) {
+          reportApiStatus(false);
+        }
         console.warn('Backend indisponível. Atualização mantida localmente:', error);
         setVisits((prev) =>
           prev.map((v) =>
@@ -237,20 +262,24 @@ export function VisitProvider({ children }: { children: ReactNode }) {
         );
       }
     },
-    []
+    [reportApiStatus]
   );
 
   const deleteVisit = useCallback(
     async (id: number | string) => {
       const isLocal = typeof id === 'string' || isNaN(Number(id));
 
-      if (isConnected && !isLocal) {
+      if (navigator.onLine && !isLocal) {
         try {
           await VisitService.deleteVisit(Number(id));
+          reportApiStatus(true);
           await removeCachedVisit(id);
           setVisits((prev) => prev.filter((v) => String(v.id) !== String(id)));
           return;
         } catch (err) {
+          if (isNetworkFailure(err)) {
+            reportApiStatus(false);
+          }
           console.warn('Falha ao deletar visita, enfileirando offline:', err);
         }
       }
@@ -270,24 +299,67 @@ export function VisitProvider({ children }: { children: ReactNode }) {
       }
       await refreshPendingCount();
     },
-    [isConnected, refreshPendingCount]
+    [refreshPendingCount, reportApiStatus]
   );
 
   const drainQueue = useCallback(async () => {
     const queue = await getQueue();
     if (queue.length === 0) return;
 
+    let syncedAny = false;
+
     for (const item of queue) {
       try {
         await processQueueItem(item);
         await removeFromQueue(item.localId);
+        syncedAny = true;
+        reportApiStatus(true);
       } catch (err) {
+        if (isNetworkFailure(err)) {
+          reportApiStatus(false);
+          break; // API fora do ar: interrompe e tenta novamente depois
+        }
+
+        if (axios.isAxiosError(err) && err.response) {
+          const status = err.response.status;
+
+          // Se tentou deletar algo que já não existe no servidor, considera concluído
+          if (item.operation === 'DELETE' && status === 404) {
+            await removeFromQueue(item.localId);
+            syncedAny = true;
+            reportApiStatus(true);
+            continue;
+          }
+
+          // Erro de validação (400/422): reenviar o mesmo payload nunca vai funcionar
+          if (status === 400 || status === 422) {
+            console.warn(
+              `Item ${item.localId} descartado por erro de validação (${status}):`,
+              err.response.data
+            );
+            await removeFromQueue(item.localId);
+            if (item.operation === 'CREATE') {
+              await removeCachedVisit(item.localId);
+            }
+            syncedAny = true;
+            reportApiStatus(true);
+            continue;
+          }
+        }
+
         console.error(`Falha ao sincronizar item ${item.localId}:`, err);
       }
     }
 
-    await loadVisits();
-  }, [loadVisits]);
+    await refreshPendingCount();
+
+    if (syncedAny) {
+      while (loadingRef.current) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      await loadVisits();
+    }
+  }, [loadVisits, refreshPendingCount, reportApiStatus]);
 
   useEffect(() => {
     const unsubscribe = registerSyncHandler(drainQueue);

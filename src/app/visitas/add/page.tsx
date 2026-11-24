@@ -3,10 +3,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useVisits } from '@/context/VisitContext';
+import { useAuth } from '@/context/AuthContext';
 
 export default function NewVisitPage() {
   const router = useRouter();
   const { addVisit } = useVisits();
+  
+  const { user } = useAuth()
 
   const [doctorId, setDoctorId] = useState('');
   const [date, setDate] = useState('');
@@ -35,7 +38,7 @@ export default function NewVisitPage() {
     try {
       await addVisit({
         doctorId: Number(doctorId),
-        userId: 1,
+        userId: user?.id ?? 1,
         date,
         time,
         observation: observations,

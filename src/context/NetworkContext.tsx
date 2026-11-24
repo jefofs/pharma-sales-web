@@ -18,11 +18,11 @@ interface NetworkContextData {
   isSyncing: boolean;
   registerSyncHandler: (fn: SyncFn) => () => void;
   triggerSync: () => Promise<void>;
+  reportApiStatus: (online: boolean) => void;
 }
 
 const NetworkContext = createContext<NetworkContextData>({} as NetworkContextData);
 
-// Funções para assinar o evento 'online/offline' do navegador sem gerar re-renders desnecessários
 function subscribeNetwork(callback: () => void) {
   window.addEventListener('online', callback);
   window.addEventListener('offline', callback);
@@ -37,23 +37,33 @@ function getSnapshot() {
 }
 
 function getServerSnapshot() {
-  return true; // Padrão seguro para SSR no servidor
+  return true;
 }
 
 export function NetworkProvider({ children }: { children: ReactNode }) {
-  // Hook oficial do React para APIs externas do navegador
-  const isConnected = useSyncExternalStore(
+  const isBrowserOnline = useSyncExternalStore(
     subscribeNetwork,
     getSnapshot,
     getServerSnapshot
   );
 
+  const [isApiOnline, setIsApiOnline] = useState<boolean>(true);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
   const handlersRef = useRef<Set<SyncFn>>(new Set());
+  const isSyncingRef = useRef<boolean>(false);
   const wasOfflineRef = useRef<boolean>(false);
 
+  const isConnected = isBrowserOnline && isApiOnline;
+
+  const reportApiStatus = useCallback((online: boolean) => {
+    setIsApiOnline(online);
+  }, []);
+
   const triggerSync = useCallback(async () => {
-    if (handlersRef.current.size === 0) return;
+    if (handlersRef.current.size === 0 || isSyncingRef.current) return;
+
+    isSyncingRef.current = true;
     setIsSyncing(true);
     try {
       for (const fn of handlersRef.current) {
@@ -64,30 +74,57 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
         }
       }
     } finally {
+      isSyncingRef.current = false;
       setIsSyncing(false);
     }
   }, []);
 
-  const registerSyncHandler = useCallback((fn: SyncFn) => {
-    handlersRef.current.add(fn);
-    return () => {
-      handlersRef.current.delete(fn);
-    };
-  }, []);
+  const registerSyncHandler = useCallback(
+    (fn: SyncFn) => {
+      handlersRef.current.add(fn);
 
-  // Monitora a transição de offline -> online para disparar a sincronização
+      // Dispara sincronização inicial ao carregar/recarregar a página
+      if (navigator.onLine) {
+        void triggerSync();
+      }
+
+      return () => {
+        handlersRef.current.delete(fn);
+      };
+    },
+    [triggerSync]
+  );
+
+  // Dispara quando a rede do navegador volta
   useEffect(() => {
-    if (isConnected && wasOfflineRef.current) {
+    if (isBrowserOnline && wasOfflineRef.current) {
       wasOfflineRef.current = false;
-      triggerSync();
-    } else if (!isConnected) {
+      void triggerSync();
+    } else if (!isBrowserOnline) {
       wasOfflineRef.current = true;
     }
-  }, [isConnected, triggerSync]);
+  }, [isBrowserOnline, triggerSync]);
+
+  // Tenta reconectar a cada 8s se a API estiver fora do ar
+  useEffect(() => {
+    if (!isBrowserOnline || isApiOnline) return;
+
+    const interval = setInterval(() => {
+      void triggerSync();
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, [isBrowserOnline, isApiOnline, triggerSync]);
 
   return (
     <NetworkContext.Provider
-      value={{ isConnected, isSyncing, registerSyncHandler, triggerSync }}
+      value={{
+        isConnected,
+        isSyncing,
+        registerSyncHandler,
+        triggerSync,
+        reportApiStatus,
+      }}
     >
       {children}
     </NetworkContext.Provider>

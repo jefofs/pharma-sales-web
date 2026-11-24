@@ -3,6 +3,7 @@
 import { useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { useVisits } from '@/context/VisitContext';
+import { useAuth } from '@/context/AuthContext';
 
 export default function EditVisitPage({
   params,
@@ -12,6 +13,8 @@ export default function EditVisitPage({
   const { id } = use(params);
   const router = useRouter();
   const { visits, updateVisit, deleteVisit } = useVisits();
+  
+  const { user } = useAuth()
 
   const visitId: number | string = /^\d+$/.test(id) ? Number(id) : id;
 
@@ -54,7 +57,7 @@ export default function EditVisitPage({
     try {
       await updateVisit(visitId, {
         doctorId: Number(doctorId),
-        userId: 1,
+        userId: user?.id ?? 1,
         date,
         time,
         observation: observations,
